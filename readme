@@ -1,0 +1,34 @@
+To run: run "node main.js ___" where ___ is a text file you want to make the API around.
+Tested on Linux Mint.
+
+
+My system works in two steps:
+    Process the input file line by line. Get the file offset for the start of each line, write it to another "datastore" file, one per line. Each line is padded out to a set length (12 default) so lookups are easier.
+
+    Wait for the API to be called. Multiply the requested line number by the pad length to get the offset of that line's information in the datastore file, and read two lines from the datastore. Use the first line to get the offset of the start of the line we want from the main file, and the second minus the first to get that lines length. Use this info to jump to the correct spot in the main file and read the full line.
+
+System performs well on large files, the only issues are:
+    Start up time. the whole input file needs to be processed before the API can begin. Large files = large startup time
+    For exceptionally large files (over a terabyte) you have to adjust the pad length for the program to function properly. this number has been moved to the top of the file and labeled for convenience.
+
+    It performs so well because we're recording where we need to jump to, preventing us from reading any more information than necessary on each request.
+
+System performs decently with large numbers of users:
+    Hypothetically each request is queued and takes little time, because each request is queued by the system and takes little time overall. However each request hits the hard drive, which takes an appreciable amount of time. Eventually too many users will slow it down, and how many it takes depends on your disk speed. A cache will alleviate a lot of these issues however.
+
+A lot of the file system work was new to me, so I leaned on the node documentation for file systems very heavily (https://nodejs.org/api/fs.html#fs_class_fs_writestream) as well as this tutorial that wasn't great but hit a lot of the important stuff (http://www.tutorialspoint.com/nodejs/nodejs_file_system.htm). I also found a MUCH better line parser (https://www.npmjs.com/package/line-chomper) then the one I was using by playing around on the npm website. There is actually an example of line-chomper which solves the given problem trivially, but I decided against using it because:
+    1: I didn't know how it would perform under load/on large files
+    2: It seemed unfair to just mash two libraries together when I'm supposed to be demonstrating my coding skills.
+
+I chose Node JS (and javascript) because I knew I would need a web framework and it was the web language I had worked with most recently. I also considered Ruby and Java. Ruby I decided against for performance reasons, and I haven’t used it super recently, as well as Rails being a very heavy weight framework for this task. While I know this could be built in Java I have never hooked Java directly up to the web, nor know of any way to do it. I’m sure it’s possible but stressed for time I wanted to avoid researching new packages and starting from basically scratch.
+I chose Express because I wanted a lightweight web framework around node, and had worked with express before at a hackathon, so it would be familiar and easy, even if I had never set it up solo.
+I chose line-chomper because it explicitly doesn't lot the entire file into memory, which would be a problem. The previous package I was using had various bugs around detecting line length and newlines, and this one gives it to you as part of the line read callback and generally looks like a much nicer library.
+
+I spent longer than I would have liked on this exercise. I actually wasted a day trying to get a database system to work for this, but couldn't find anything lightweight and fast enough. I also spent time mucking around with Redis and other cache systems, since I don't need 99% of features in a database (sorting, searching, associations, returning several records). When I was going to bed I had the idea for standardized line lengths on the offset records, and finished it the next day in about 4-5 hours.
+
+If I had unlimited time I would next prioritize a cache to hold either line offsets or whole lines, depending on what kind of traffic we were getting (offsets = more things in cache, lines = a few requests return immediately)
+I would then focus on getting the file offset recording moving faster, or atleast asynchronously. Currently file appending must be synchronous to both make sure the lines are being written in the correct order, and to make sure that there aren't too many writers open in the same file (which crashes nodejs). However it means that currently the API doesn't return until the processing is done, and the system can't tell when the writing is finished. Node file IO is strange.
+Then I would probably work on a system to detect if a file is small enough to keep in memory, and make it skip the disk entirely.
+Finally I'd rewrite the system to detect large files and cut them into pieces that can be spread across servers behind a load balancer, improving performance under load.
+
+I think my code is honestly very cramped in places, and uses a lot of variable names that aren't the greatest. In general they're fine, but 'buffy' for a buffer and "ressy" for a result could be improved. I also kept in the lines that are reached when we are still setting up the server, even though the server won't reach them during setup due to file locks and synchronous calls. While they cannot be reached in this version and thus cause no harm, they look sloppy. They are there so once we can read and write to the file at the same time, the case described is already covered. No sense deleting harmless code you know you will have to rewrite later, although it detracts from the style.
